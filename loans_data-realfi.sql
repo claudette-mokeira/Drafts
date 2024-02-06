@@ -35,7 +35,7 @@ SELECT
  		ELSE NULL
 	END AS closing_date,
 	
-	coll_pre_woff,loan_total_interest,coll_dd,coll_pre_default,curr_balance,coll_all,default_balance,early_settlement_surplus , waiver,
+	coll_pre_woff,loan_total_interest,coll_dd,coll_pre_default,curr_balance,coll_all,default_balance,early_settlement_surplus , waiver,final_loan_status
 FROM `dwh-4g.dwh_4g.FactLoan` fl
 left join `dwh_4g.FactPayments` fp on fp.dwh_loan_code = fl.dwh_loan_code
 LEFT JOIN `merlin_binlog_dump.merlin_customer_status` mcs ON fl.final_loan_status = CAST(mcs.id AS string)
@@ -49,11 +49,13 @@ loan_table_2 as (select distinct *,
 		WHEN closing_date is not null AND coll_dd >= loan_total_interest+early_settlement_surplus  THEN 'Settled on time'
 		WHEN closing_date is null AND coll_dd >= loan_total_interest+early_settlement_surplus  THEN 'Settled on time'
 		WHEN closing_date > maturity_date AND coll_pre_default >= loan_total_interest+early_settlement_surplus THEN 'Settled past due date'
-		WHEN current_date <= maturity_date AND coll_dd >= loan_total_interest- early_settlement_surplus  THEN 'Settled on time'
+		WHEN current_date <= maturity_date AND coll_dd >= loan_total_interest+ early_settlement_surplus  THEN 'Settled on time'
 		WHEN closing_date is null AND coll_dd < loan_total_interest+early_settlement_surplus and coll_all >= loan_total_interest  THEN 'Settled past due date'
 		WHEN current_date > maturity_date AND coll_all <= loan_total_interest+early_settlement_surplus THEN 'Delinquent'
 		WHEN default_balance > 0 THEN 'Default'
-		ELSE 'Performing'
+    WHEN current_date <= maturity_date and final_loan_status in ('Settled', 'Closed Repaid') or curr_balance+early_settlement_surplus <= 0 then 'Settled on time'
+    WHEN current_date <= maturity_date and curr_balance + early_settlement_surplus > 0 then 'Performing'
+		ELSE 'ERROR'
 	END AS performance_status,
 
 CASE WHEN current_date <= maturity_date THEN NULL -- loan has not yet matured
@@ -72,15 +74,16 @@ CASE WHEN performance_status IN('Written-off','Settled after default','Settled p
 		ELSE NULL
 	END AS asset_status,
  from loan_table_2
-	--  where 
-	-- closing_date is not null and 
-	--  performance_status = 'Performing'
-	--  performance_status = 'ERROR'
+--  TESTS
+	--  where closing_date is null and performance_status not in( 'Delinquent', 'Performing')
+	--  where closing_date is not null and performance_status = 'Performing'
+	--  where performance_status = 'ERROR'
 
 -- )
-where issue_date between '2023-01-01' and '2023-03-31' -- Loans_data-2023_Jan-Mar-20240202
--- where issue_date between '2023-04-01' and '2023-06-30' -- Loans_data-2023_Apr-Jun-20240202
--- where issue_date between '2023-07-01' and '2023-09-30' -- Loans_data-2023_Jul-Sep-20240202
--- where issue_date between '2023-10-01' and '2023-12-31' -- Loans_data-2023_Oct-Dec-20240202
--- where issue_date between '2024-01-01' and '2024-01-31' -- Loans_data-2024_Jan-20240202
+where issue_date between '2023-01-01' and '2023-01-31' -- Loans_data-2023_Jan-20240206
+-- where issue_date between '2023-01-01' and '2023-03-31' -- Loans_data-2023_Jan-Mar-20240206
+-- where issue_date between '2023-04-01' and '2023-06-30' -- Loans_data-2023_Apr-Jun-20240206
+-- where issue_date between '2023-07-01' and '2023-09-30' -- Loans_data-2023_Jul-Sep-20240206
+-- where issue_date between '2023-10-01' and '2023-12-31' -- Loans_data-2023_Oct-Dec-20240206
+-- where issue_date between '2024-01-01' and '2024-01-31' -- Loans_data-2024_Jan-20240206
 ORDER BY issue_date ASC
